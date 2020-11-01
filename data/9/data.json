@@ -1,0 +1,21 @@
+{
+  "game_id": 635886,
+  "team_home": {
+    "id": 1,
+    "name": "Los Angeles Dodgers"
+  },
+  "team_away": {
+    "id": 2,
+    "name": "Tampa Bay Rays"
+  },
+  "home_score": 0,
+  "away_score": 1,
+  "top_inning": false,
+  "out": 2,
+  "1st_base": false,
+  "2nd_base": false,
+  "3rd_base": false,
+  "inning_count": 1,
+  "pitcher_id": 605483,
+  "batter_id": 457759
+}
