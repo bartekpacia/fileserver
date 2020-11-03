@@ -3,47 +3,53 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"time"
 )
 
-// Team represents a baseball team data.
-type Team struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
-}
-
-// MatchData represents baseball match data at a single point in time.
-type MatchData struct {
-	GameID      int  `json:"game_id"`
-	TeamHome    Team `json:"team_home"`
-	TeamAway    Team `json:"team_away"`
-	ScoreHome   int  `json:"home_score"`
-	ScoreAway   int  `json:"away_score"`
-	TopInning   bool `json:"top_inning"`
-	Out         int  `json:"out"`
-	FirstBase   bool `json:"1st_base"`
-	SecondBase  bool `json:"2nd_base"`
-	ThirdBase   bool `json:"3rd_base"`
-	InningCount int  `json:"inning_count"`
-	PitcherID   int  `json:"pitcher_id"`
-	BatterID    int  `json:"batter_id"`
-}
-
 var (
-	currentMatch *MatchData
+	host     string
+	port     string
+	endpoint string
+	interval time.Duration
+
+	currentData *interface{}
 )
 
-func readJSON(which int) (*MatchData, error) {
+func init() {
+	flag.StringVar(&host, "host", "localhost", "hostname to listen on")
+	flag.StringVar(&port, "port", "3000", "port to listen on")
+	flag.StringVar(&endpoint, "endpoint", "/data", "default endpoint to serve data on")
+	flag.DurationVar(&interval, "interval", 5*time.Second, "interval every which the served data will be updated")
+}
+
+func main() {
+	flag.Parse()
+
+	finished := make(chan struct{})
+
+	go updateJSON(finished)
+
+	addr := fmt.Sprintf("%s:%s", host, port)
+	http.HandleFunc(endpoint, handle)
+	http.ListenAndServe(addr, nil)
+
+	<-finished
+
+	fmt.Println("fileserver: served all files, shutdown")
+}
+
+func readFile(which int) (*interface{}, error) {
 	path := fmt.Sprint("data/", which, "/data.json")
 
 	data, err := ioutil.ReadFile(path)
 	if err != nil {
-		return nil, errors.New(fmt.Sprint("error reading a json file:", err.Error()))
+		return nil, errors.New(fmt.Sprint("fileserver: error reading a json file:", err.Error()))
 	}
-	matchData := MatchData{}
+	var matchData interface{}
 	err = json.Unmarshal(data, &matchData)
 	if err != nil {
 		return nil, err
@@ -55,40 +61,28 @@ func readJSON(which int) (*MatchData, error) {
 func updateJSON(finished chan struct{}) {
 	i := 1
 	for {
-		fmt.Println("5 seconds!")
+		fmt.Printf("fileserver: serving new data after %.f seconds\n", interval.Seconds())
 		var err error
-		currentMatch, err = readJSON(i)
+		currentData, err = readFile(i)
 		if err != nil {
+			fmt.Println("fileserver: served all files, you can exit now")
 			break
 		}
 
 		i++
-		time.Sleep(5 * time.Second)
+		time.Sleep(interval)
 	}
 
 	close(finished)
 }
 
-func main() {
-	finished := make(chan struct{})
-
-	go updateJSON(finished)
-
-	http.HandleFunc("/data", handle)
-	http.ListenAndServe(":3000", nil)
-
-	<-finished
-
-	fmt.Println("fileserver: served all files, shutdown")
-}
-
 func handle(writer http.ResponseWriter, req *http.Request) {
-	js, err := json.Marshal(currentMatch)
+	j, err := json.Marshal(currentData)
 	if err != nil {
 		http.Error(writer, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	writer.Header().Set("Content-Type", "application/json")
-	writer.Write(js)
+	writer.Write(j)
 }
